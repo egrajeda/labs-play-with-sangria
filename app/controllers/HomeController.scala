@@ -3,12 +3,16 @@ package controllers
 import javax.inject._
 
 import akka.actor.ActorSystem
+import play.api.libs.json.Json
 import play.api.mvc._
 import sangria.execution.{ErrorWithResolver, Executor, QueryAnalysisError}
-import sangria.macros._
 import sangria.macros.derive._
 import sangria.marshalling.playJson._
+import sangria.parser.{QueryParser, SyntaxError}
 import sangria.schema._
+
+import scala.concurrent.Future
+import scala.util.{Failure, Success}
 
 /**
  * This controller creates an `Action` to handle HTTP requests to the
@@ -79,7 +83,7 @@ class HomeController @Inject()(cc: ControllerComponents, system: ActorSystem) ex
 
   val schema = Schema(QueryType)
 
-  val query = graphql"""
+  val query = """
     query MyProduct {
       product(id: "2") {
         name
@@ -104,11 +108,17 @@ class HomeController @Inject()(cc: ControllerComponents, system: ActorSystem) ex
    * a path of `/`.
    */
   def index() = Action.async { request =>
-    Executor.execute (schema, query, new ProductRepository)
-      .map (Ok(_))
-      .recover {
-        case error: QueryAnalysisError ⇒ BadRequest (error.resolveError)
-        case error: ErrorWithResolver ⇒ InternalServerError (error.resolveError)
-      }
+    QueryParser.parse(query) match {
+      case Success(queryAst) =>
+        Executor.execute(schema, queryAst, new ProductRepository)
+          .map(Ok(_))
+          .recover {
+            case error: QueryAnalysisError ⇒ BadRequest (error.resolveError)
+            case error: ErrorWithResolver ⇒ InternalServerError (error.resolveError)
+          }
+      case Failure(error: SyntaxError) =>
+        Future.successful(BadRequest(Json.obj("error" -> error.getMessage)))
+
+    }
   }
 }
