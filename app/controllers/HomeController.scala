@@ -79,24 +79,11 @@ class HomeController @Inject()(cc: ControllerComponents, system: ActorSystem) ex
 
   val schema = Schema(QueryType)
 
-  val query = """
-    query MyProduct {
-      product(id: "2") {
-        name
-        description
+  // Try it with something like:
+  // curl -X POST -H "Content-Type: application/json" -d '{"query": "{ products { name } }"}' http://localhost:9000
+  def index() = Action.async(parse.json) { request =>
+    val query = (request.body \ "query").as[String]
 
-        picture(size: 500) {
-          width, height, url
-        }
-      }
-
-      products {
-        name
-      }
-    }
-  """
-
-  def index() = Action.async { request =>
     QueryParser.parse(query) match {
       case Success(queryAst) =>
         Executor.execute(schema, queryAst, new ProductRepository)
